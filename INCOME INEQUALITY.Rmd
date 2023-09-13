@@ -1,0 +1,441 @@
+---
+title: "The impact of government expenditure on education on income inequality in the MENA region: Panel analysis on the time period from 1990 to 2017."
+output:
+  pdf_document: default
+  html_document:
+    pdf_print: 
+        keep_tex: true
+      includes:
+          \usepackage{dcolumn} 
+  word_document: default
+---
+
+# Description:
+
+This paper analyzes the effect of government educational spending has on income inequality .
+
+Dependent variable : Income inequality represented by the GINI index
+
+Independent Variable: Government expenditure on education, total (% of GDP)
+
+Control Variables:
+
+-   Unemployment, total (% of total labor force)
+
+-   GDP per capita growth (annual %)
+
+-   Age dependency ratio (% of working-age population)
+
+-   Population growth (annual %)
+
+-   School enrollment, primary (% gross)
+
+-   School enrollment, secondary (% gross)
+
+-   School enrollment, tertiary (%gross)
+
+-   Urban population (% of total population)
+
+-   Population density (people per sq. km of land area)
+
+-   Agriculture, forestry, and fishing, value added (% of GDP)
+
+-   Industry (including construction), value added (% of GDP)
+
+-   Consumer price index (2010 = 100)
+
+-   Urban population (% of total population)
+
+# Methodology:
+
+Our goal is to fit a significant model that captures the magnitude of the effect government education expenditure has on income inequality, the latter of which is represented by the Gini index. Whereas a value of 0 for the Gini index implies a perfect income distribution and 100% implies perfect income inequality.
+
+Pooled OLS is the simplest way of estimating any panel data set however its assumptions must be met . This study chose Pooled estimation not only for its simplicity but also due the small data set at hand . It could be assumed that the model will not suffer from autocorrelation since observations weren't recorded in the exact same period and they're of limited quantity .In order to achieve a statistically viable model all the variables that affect income inequality has to be taken into consideration. However some of these variables are not quantifiable thus, we selected a group variable that are proven statistically significant. Which are as follows: unemployment rate, population growth, GDP per capita, and educational enrollment for primary, secondary, and tertiary Vazquez et al. (2012). And according to Kaasa (2003), there are about 14 variables that explain 68.6% of variability of the GINI index. Namely; unemployment, inflation, Government expenditure on education and health as a percentage of GDP, school enrolment (primary), growth of population, population density.
+
+## Variable Descriptions
+
+## Imports
+
+```{r echo = T, results = 'hide'}
+
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(summarytools)
+library(corrplot)
+library(mice)
+library(rstatix)
+library(MVN)
+library(bestNormalize)
+library(car)
+library(lmtest)
+library(plm)
+library(leaps)
+library(tseries)
+library(dynlm)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(xtable)
+library(stargazer)
+```
+
+```{r}
+df <- read_excel("Final_Data1.xlsx") # total observations 532
+df_omitted <- na.omit(df) # Non-Na observations 37 
+```
+
+### Imputing missing data points
+
+MICE stands for Multivariate Imputation by Chained Equations. this procedure replaces missing values with plausible values in order to not affect the regression coefficients .
+
+```{r echo = T, results = 'hide'}
+imputed_Data <- mice(df, m=5, maxit = 50, method = 'pmm', seed = 500)
+imputed_Data <- complete(imputed_Data,3)
+
+```
+
+## Descriptive statistics
+
+```{r}
+df_desc <- imputed_Data[-c(1,2) ] # Dropped Country and time  column
+descr(df_desc)
+```
+
+### Correlations
+
+```{r}
+df_corr <- cor(df_desc)
+corrplot(df_corr, method="circle"  )
+```
+
+From the correlogram above , it is observed that the there are correlation between our dependent variable and some explanatory variables, which will lay the framework for the OLS model . Moreover, there appears to be high correlations between the explanatory variables , which might violate the multicolinearity assumption later on the Modelling section.
+
+All variables are not normally distributed except the AGE variable (Age dependency ratio). Unfortunately, Log , square root , Box-Cox ,and reciprocal transformation cant be used as our observations include non-positive values.
+
+#### Encoding
+
+GDP per capita growth and population growth rate both have negative values , which complicates the transformation process . The following procedure will transform both those variables into categorical variables signifying High , Medium ,and Low growth rates , relative to the MENA region.
+
+```{r}
+df_desc$GDPC <- cut(df_desc$GDPC,
+              breaks=c(-65, -15, 35, 100),
+              labels=c('Low', 'Medium ', 'High '))
+df_desc$POP <- cut(df_desc$POP,
+              breaks=c(-5, 3, 11, 19),
+              labels=c('Low', 'Medium ', 'High '))
+```
+
+## Modelling and Feature selection
+
+```{r}
+#df_omitted1 <- df_omitted[-c(1,2)] #  Radj= 0.92 , xd
+lm1 <- lm(GINI ~ .,data=df_desc) 
+summary(lm1)
+plot(lm1)
+
+```
+
+### Assumptions
+
+1.  **Normality**
+
+2.  **Homoscedasticity**
+
+    $$ Var(E_i) = \sigma^2 $$
+
+3.  **Autocorrelation**
+
+    $$Cov(E_i,E_j)=0$$
+
+4.  **Multicolinearity**
+
+### Normality
+
+```{r}
+hist(df_desc$EXP,
+main="EXP Distribution ",
+xlab="Government expenditure on education, total (% of GDP)",
+freq=FALSE
+)
+```
+
+```{r}
+#hist(sqrt(df_desc1$GINI),
+#main="Gini index Distribution",
+#xlab="Gini index",
+#freq=FALSE
+#)
+```
+
+```{r}
+Ntest <- mvn(data = df_desc[-c(4,6)], mvnTest = "mardia")
+Ntest$univariateNormality
+```
+
+#### Transformation
+
+Unfortunately, no universal transformation will suffice . Thus , each variable has to be transformed separately . The interpretation of a box cox transformed variable is simply X\^ lambda. I
+
+It is important to note that while the tests show that the normality assumption has been violated , histograms of the variables appear to follow a normal distribution.
+
+```{r}
+df_desc1 <- df_desc[-c(4,6)]
+df_matrix <- as.matrix(df_desc[-c(4,6)])
+
+df_desc1[1] <- sqrt(df_desc$GINI) #GINI normalize
+
+df_desc1[2] <-log10(df_desc1[2]+0.05) #GOV expenditure normalized , log base 10 normalizes positively skewed data
+df_desc1[3] <- sqrt(df_desc1[3]) #unemployment normalized
+bc<-boxcox(imputed_Data$PRIM)
+  df_desc1[5] <-bc$x.t #Primary enrollment normalized,  lambda = 1.999958
+bc_sec <- boxcox(df_desc1$SEC)
+df_desc1[6] <-bc_sec$x.t #Secondary enrollment normalized,  lambda =  1.756894
+df_desc1[7] <- sqrt(df_desc1[7]) #tertiary enrollment normalized
+bc_popd <- boxcox(df_desc1$PopD)
+df_desc1[9] <- bc_popd$x.t #Population density  normalized,  lambda =  0.02170782
+bc_GDPAFF <- boxcox(df_desc1$GDPAFF)
+df_desc1[10] <- bc_GDPAFF$x.t #Population density  normalized,  lambda =  0.3059507
+df_desc1[11] <-log(df_desc1[11]) #GDP Industry expenditure normalized 
+df_desc1[12] <- sqrt(df_desc1[12]) #CPI normalized
+bc_HealthGPD <- boxcox(df_desc1$HealthGPD)
+df_desc1[13] <- bc_HealthGPD$x.t #Health GDP expenditures density  normalized, lambda = 0.1132915
+df_desc1 <- cbind(df_desc1,df_desc[c(4,6)] )
+
+```
+
+### Homoscedasticity
+
+Breusch-Pagan Test is used to determine if Homoscedasticity is present in the analysis.
+
+$$
+H_1 : Var(E_i) 
+\neq
+\sigma^2$$
+
+$$
+H_1 : Var(E_i) 
+\neq
+\sigma^2$$
+
+```{r}
+bptest (lm1)
+```
+
+P-value is more than specified alpha (0.05) , thus there is no enough evidence to reject the null hypothesis Homoscedasticity is present
+
+### Autocorrelation
+
+Durbin-Watson test is used to determine if the errors are autocorrelated.
+
+$$
+H_0 : Cov(E_i,E_j)=0
+$$
+
+$$
+H_1 : Cov(E_i,E_j)
+\neq 0 
+$$
+
+```{r}
+durbinWatsonTest(lm1)
+```
+
+There is enough evidence to reject the null hypothesis and conclude that the errors are correlated .
+
+The literature suggests that government effectiveness and corruption has a significant effect on income inequality . However , no estimates for either are available consistently throughout the MENA region . We can conclude that the autocorrelation present is caused by the missing variable , commonly referred to as omitted variable bias .
+
+### Multicolinearity
+
+Variance inflation factor or VIF for short is a statistic computed to determine which regressor is the main cause of multicolinearity in our model . A relatively high VIF is a good sigh to drop that variable .
+
+```{r}
+vif(lm1)
+```
+
+GDPAFF variable has the greatest VIF out of all the variables which is reaffirmed by the correlogram conducted above .
+
+### Re-fitting
+
+```{r}
+df_fixed <-df_desc1[-c(10)]
+lm2 <- lm(GINI ~ . ,data=df_fixed) 
+summary(lm2)
+plot(lm2)
+```
+
+### Feature Selection
+
+```{r}
+subs <- regsubsets(GINI ~ . ,data=df_fixed, nvmax = 15)
+
+res.sum <- summary(subs)
+table(res.sum$bic)
+```
+
+According to the BIC , Mallow's C , and adjusted R-squared the following model has the optimal combination of variables :
+
+```{r}
+lm3 <- lm(GINI ~ . ,data=df_fixed[-c(5)]) #drop prim
+summary(lm3)
+```
+
+## Robustness
+
+```{r}
+lm4 <- lm(GINI ~ EXP   +SEC  + TERT  +PopD  + CPI    , data= df_fixed) # Without unemployment 
+summary(lm4)
+```
+
+```{r}
+lm5 <- lm(GINI ~ EXP  + UNP  + AGE + TERT + URB +PopD +GDPI + CPI +HealthGPD +GDPC + POP , data= df_fixed) # Without Secondary edu 
+summary(lm5)
+```
+
+```{r}
+lm6 <- lm(GINI ~ EXP  + UNP +SEC + TERT + URB +PopD +GDPI + CPI +HealthGPD +GDPC + POP , data= df_fixed) # Without AGE
+summary(lm6) 
+```
+
+```{r}
+lm7 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + URB +PopD +GDPI + CPI +HealthGPD +GDPC + POP , data= df_fixed) # Without TERTiary
+summary(lm7)
+```
+
+```{r}
+df_fixed$LGINI <- Lag(df_fixed$GINI,-1)
+lm8 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +PopD +GDPI + CPI +HealthGPD +GDPC + POP + URB +LGINI , data= df_fixed) # Without URbAn
+summary(lm8)
+```
+
+```{r}
+lm9 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +GDPI + CPI +HealthGPD +GDPC + POP , data= df_fixed) # Without PopD
+summary(lm9)
+```
+
+```{r}
+lm10 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +PopD + CPI +HealthGPD +GDPC + POP , data= df_fixed) # Without GDPI
+summary(lm10)
+```
+
+```{r}
+lm11 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +PopD + GDPI +HealthGPD +GDPC + POP , data= df_fixed) # Without CPI
+summary(lm11)
+```
+
+```{r}
+lm12 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +PopD + GDPI +CPI +GDPC + POP , data= df_fixed) # Without HealthGPD   
+summary(lm12)
+```
+
+```{r}
+lm13 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +PopD + GDPI +CPI +HealthGPD + POP , data= df_fixed) # Without GDPC   
+summary(lm13)
+```
+
+```{r}
+lm14 <- lm(GINI ~ EXP  + UNP +SEC + AGE  + TERT +URB +PopD + GDPI +CPI +HealthGPD + GDPC , data= df_fixed) # Without POP   
+summary(lm14)
+```
+
+```{r}
+tab_model(lm3, lm4, lm5,lm6, lm7, lm8,lm9, lm10, lm11,lm12, lm13, lm14 , auto.label = FALSE)
+```
+
+```{r}
+tab_model(
+  lm3, lm14, lm13, 
+  pred.labels = c("Intercept"
+                  , "Government expenditure on education, total (% of GDP)"
+                  , "Unemployment, total (% of total labor force)"
+                  , "Age dependency ratio (% of working-age population)"
+                  ,"School enrollment, secondary (% gross)"
+                  , "School enrollment, tertiary (% gross)"
+                  , "Urban population (% of total population)" 
+                  ,"Population density (people per sq. km of land area)"
+                  ,"Industry (including construction), value added (% of GDP)"
+                  ,"Consumer price index (2010 = 100)"
+                  , "HealthGPD" ,"GDP per capita(Moderate)"
+                  ,"GDP per capita(High)" 
+                  , "Population Growth rate(Moderate)" 
+                  , "Population Growth rate (high)" ),
+  dv.labels = c("First Model", "Controlling for HealthGPD", "Controlling for Population Growth rate"),
+  string.pred = "Coeffcient",
+  string.ci = "Conf. Int (95%)",
+  string.p = "P-Value"
+)
+```
+
+```{r}
+lm15 <- lm(GINI ~ EXP +SEC +POP +GDPI +URB +HealthGPD +TERT +PopD , data= df_fixed)
+lm16 <- lm(GINI ~ EXP +SEC  +GDPI +URB +HealthGPD +TERT +PopD , data= df_fixed)
+lm17 <- lm(GINI ~ EXP +SEC +POP  +URB +HealthGPD +TERT +PopD , data= df_fixed)
+lm18 <- lm(GINI ~ EXP +SEC +POP +GDPI  +HealthGPD +TERT +PopD , data= df_fixed)
+lm19 <- lm(GINI ~ EXP +SEC +POP +GDPI +URB  +TERT +PopD , data= df_fixed)
+lm20 <- lm(GINI ~ EXP +SEC +POP +GDPI +URB +HealthGPD  +PopD , data= df_fixed)
+lm21 <- lm(GINI ~ EXP +SEC +POP +GDPI +URB +HealthGPD +TERT  , data= df_fixed)
+
+summary(lm15)
+```
+
+```{r}
+stargazer(lm15, lm21, lm16,lm17,lm18,lm19,lm20, title="Results", align=TRUE, type = "latex")
+```
+
+```{=latex}
+% Table created by stargazer v.5.2.3 by Marek Hlavac, Social Policy Institute. E-mail: marek.hlavac at gmail.com
+% Date and time: Sun, May 07, 2023 - 8:57:57 PM
+% Requires LaTeX packages: dcolumn 
+\begin{table}[!htbp] \centering 
+  \caption{Results} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lD{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} } 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{7}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-8} 
+\\[-1.8ex] & \multicolumn{7}{c}{GINI} \\ 
+\\[-1.8ex] & \multicolumn{1}{c}{(1)} & \multicolumn{1}{c}{(2)} & \multicolumn{1}{c}{(3)} & \multicolumn{1}{c}{(4)} & \multicolumn{1}{c}{(5)} & \multicolumn{1}{c}{(6)} & \multicolumn{1}{c}{(7)}\\ 
+\hline \\[-1.8ex] 
+ EXP & -0.279 & -0.446^{*} & -0.332^{} & -1.022^{*} & -0.443^{*} & -0.467^{} & -0.450^{**} \\ 
+  & (0.177) & (0.177) & (0.176) & (0.183) & (0.200) & (0.182) & (0.173) \\ 
+  & & & & & & & \\ 
+ SEC &  & -0.414^{*} & -0.404^{*} & -0.527^{*} & -0.187^{*} & -0.466^{*} & -0.288^{*} \\ 
+  &  & (0.055) & (0.055) & (0.058) & (0.060) & (0.056) & (0.040) \\ 
+  & & & & & & & \\ 
+ POPMedium  & -0.531^{*} & -0.597^{*} &  & -0.645^{*} & -0.376^{*} & -0.640^{*} & -0.561^{*} \\ 
+  & (0.083) & (0.081) &  & (0.087) & (0.092) & (0.083) & (0.080) \\ 
+  & & & & & & & \\ 
+ POPHigh  & -0.929^{*} & -0.822^{*} &  & -0.965^{*} & -0.480 & -0.974^{*} & -0.879^{**} \\ 
+  & (0.335) & (0.331) &  & (0.354) & (0.374) & (0.339) & (0.321) \\ 
+  & & & & & & & \\ 
+ GDPI & -1.090^{*} & -0.770^{*} & -1.034^{*} &  & -0.799^{*} & -1.008^{*} & -1.037^{*} \\ 
+  & (0.086) & (0.079) & (0.086) &  & (0.097) & (0.089) & (0.080) \\ 
+  & & & & & & & \\ 
+ URB & 0.040^{*} & 0.043^{*} & 0.044^{*} & 0.042^{*} &  & 0.033^{*} & 0.044^{*} \\ 
+  & (0.003) & (0.003) & (0.003) & (0.003) &  & (0.003) & (0.003) \\ 
+  & & & & & & & \\ 
+ HealthGPD & -0.449^{*} & -0.384^{*} & -0.451^{*} & -0.434^{*} & -0.044 &  & -0.366^{*} \\ 
+  & (0.048) & (0.048) & (0.048) & (0.051) & (0.047) &  & (0.046) \\ 
+  & & & & & & & \\ 
+ TERT & -0.062^{*} & 0.083^{*} & 0.121^{*} & 0.196^{*} & -0.003 & 0.034 &  \\ 
+  & (0.022) & (0.030) & (0.030) & (0.031) & (0.033) & (0.030) &  \\ 
+  & & & & & & & \\ 
+ PopD & -0.213^{*} &  & -0.234^{*} & -0.038 & -0.100^{*} & -0.183^{*} & -0.194^{**} \\ 
+  & (0.036) &  & (0.036) & (0.035) & (0.040) & (0.037) & (0.035) \\ 
+  & & & & & & & \\ 
+ Constant & 1.550^{*} & -0.372 & 0.117 & -3.193^{*} & 3.252^{*} & 1.485^{*} & 0.870^{*} \\ 
+  & (0.386) & (0.425) & (0.436) & (0.339) & (0.420) & (0.408) & (0.320) \\ 
+  & & & & & & & \\ 
+\hline \\[-1.8ex] 
+Observations & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} & \multicolumn{1}{c}{644} \\ 
+R$^{2}$ & \multicolumn{1}{c}{0.395} & \multicolumn{1}{c}{0.415} & \multicolumn{1}{c}{0.404} & \multicolumn{1}{c}{0.329} & \multicolumn{1}{c}{0.252} & \multicolumn{1}{c}{0.380} & \multicolumn{1}{c}{0.435} \\ 
+Adjusted R$^{2}$ & \multicolumn{1}{c}{0.388} & \multicolumn{1}{c}{0.408} & \multicolumn{1}{c}{0.397} & \multicolumn{1}{c}{0.321} & \multicolumn{1}{c}{0.243} & \multicolumn{1}{c}{0.373} & \multicolumn{1}{c}{0.428} \\ 
+Residual Std. Error & \multicolumn{1}{c}{0.783 (df = 635)} & \multicolumn{1}{c}{0.770 (df = 635)} & \multicolumn{1}{c}{0.776 (df = 636)} & \multicolumn{1}{c}{0.824 (df = 635)} & \multicolumn{1}{c}{0.870 (df = 635)} & \multicolumn{1}{c}{0.792 (df = 635)} & \multicolumn{1}{c}{0.756 (df = 635)} \\ 
+F Statistic & \multicolumn{1}{c}{51.851$^{*}$ (df = 8; 635)} & \multicolumn{1}{c}{56.288$^{*}$ (df = 8; 635)} & \multicolumn{1}{c}{61.586$^{*}$ (df = 7; 636)} & \multicolumn{1}{c}{38.942$^{*}$ (df = 8; 635)} & \multicolumn{1}{c}{26.757$^{*}$ (df = 8; 635)} & \multicolumn{1}{c}{48.715$^{*}$ (df = 8; 635)} & \multicolumn{1}{c}{61.106$^{*}$ (df = 8; 635)} \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{7}{r}{$^{}$p$<$0.1; $^{}$p$<$0.05; $^{**}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table}
+```
